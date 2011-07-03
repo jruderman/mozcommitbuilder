@@ -223,12 +223,18 @@ class Builder():
         #Recursively build, run, and prompt
         verdict = ""
 
-        if testfile==None and testpath==None and testcondition==None:
+        try:
+            self.build()
+        except Exception:
+            verdict = "skip"
+
+        if verdict == "skip":
+            pass
+        elif testfile==None and testpath==None and testcondition==None:
             #Not using a test, interactive bisect begin!
-            self.buildAndRun()
+            self.run()
         elif testcondition != None:
             #Using Jesse's idea: import any testing script and run it as the truth condition
-            self.build()
             conditionscript = ximport.importRelativeOrAbsolute(testcondition)
             args_to_pass = [self.objdir] + args_for_condition
             conditionscript.init(args_to_pass)
@@ -240,10 +246,7 @@ class Builder():
             #If conditionscript is false, that means the bug is not present.
             verdict = conditionscript.interesting(args_to_pass,tmpdir)
             verdict = "bad" if verdict else "good"
-
         else:
-            #TODO UNCOMMENT LINE BELOW
-            self.build()
             if testfile == None:
                 #Using External testfile
                 #1. Clear self.mochitest_tmp
@@ -286,17 +289,13 @@ class Builder():
                 print "Verdict: PASSED test, good changeset detected!"
                 print "============================"
 
-        if verdict != 'good' and verdict !='bad':
-            while verdict != 'good' and verdict != 'bad' and verdict != 'b' and verdict != 'g':
-                verdict = raw_input("Was this commit good or bad? (type 'good' or 'bad' and press Enter): ")
+        while verdict not in ["good", "bad", "skip"]:
+            verdict = raw_input("Was this commit good or bad? (type 'good', 'bad', or 'skip'): ")
 
-        #do hg bisect --good or --bad depending on whether it's good or bad
-        retval = 0;
-        if verdict == 'good':
-            retval = captureStdout(self.hgPrefix+["bisect","--good"])
-        else:
-            retval = captureStdout(self.hgPrefix+["bisect","--bad"])
-
+        # do hg bisect --good, --bad, or --skip
+        verdictCommand = self.hgPrefix+["bisect","--"+verdict]
+        print " ".join(verdictCommand)
+        retval = captureStdout(verdictCommand)
         print str(retval)
 
         # HACK
@@ -309,13 +308,6 @@ class Builder():
             quit()
 
         self.bisectRecurse(testfile=testfile, testpath=testpath, testcondition=testcondition, args_for_condition=args_for_condition)
-
-    def buildAndRun(self, changeset=0):
-        #API convenience function
-        self.build(changeset=changeset)
-        #print "Starting up Firefox..."
-        self.run()
-        #print "Complete! Firefox should be running."
 
     def build(self, changeset=0):
         #Build a binary and return the file path
@@ -525,11 +517,11 @@ def cli():
 
     # For building single commits:
     if options.single:
+        commitBuilder.build(changeset=options.single)
         if options.run:
-            commitBuilder.buildAndRun(changeset=options.single)
+            commitBuilder.run()
             print "Firefox successfully built and ran!"
         else:
-            commitBuilder.build(changeset=options.single)
             print "Local trunk built. Not running."
 
     # For bisections:
